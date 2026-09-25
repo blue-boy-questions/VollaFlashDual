@@ -1,0 +1,6 @@
+id=vollaflashdual
+name=Volla Quintus Dual-Flash
+version=v1.0
+versionCode=1
+author=blue-boy-questions
+description=Mirrors the MT6360 flash ch1 brightness onto ch2 so BOTH flash LEDs light on the Volla Quintus (algiz). Pure KernelSU daemon, no Xposed. Torch strength handled separately.
