@@ -1,80 +1,74 @@
 # VollaFlashDual
 
-A **KernelSU / Magisk** module that makes **both** flash LEDs light on the
-**Volla Quintus (algiz, MediaTek mt6877)** — natively, by fixing the camera
-HAL itself. No Xposed, no daemon, no polling.
+**KernelSU / Magisk** module for the **Volla Quintus (algiz, MediaTek mt6877)**
+that fixes the flashlight — both problems, natively, no Xposed.
 
-## Root cause
+## What it fixes
 
-The Quintus has a dual-LED flash driven by an MT6360, exposed as two kernel
-channels (`mt6360_flash_ch1`, `mt6360_flash_ch2`), both `max_brightness 31`.
-Both work at the kernel level.
+1. **Both flash LEDs light.** The stock MediaTek HAL
+   (`libcameracustom.flashlight.so`) hard-codes `cust_isDualFlashSupport()` and
+   `cust_isSubFlashSupport()` to `0`, so only one of the two MT6360 LEDs ever
+   fires. This module ships an 8-byte-patched copy where they return `1`.
 
-Disassembling `/vendor/lib64/libcameracustom.flashlight.so` shows MediaTek
-disabled the second LED in the HAL:
+2. **Torch brightness slider (v3.0).** The stock camera provider HAL reports
+   `strengthMaximumLevel = 1`, so Android hides the strength slider. The sister
+   device **DariaOS (zahedan / Bound)** — same mt6877, same camera provider
+   `@2.6` — ships a newer build of
+   `android.hardware.camera.provider@2.6-impl-mediatek.so` that actually
+   implements torch strength (`getTorchStrengthLevel`,
+   `turnOnTorchWithStrengthLevel`, `setTorchLevel`). This module overlays that
+   DariaOS HAL onto the Volla ROM.
 
-```
-cust_isDualFlashSupport:  mov w0, wzr   ; return 0
-                          ret
-cust_isSubFlashSupport:   mov w0, wzr   ; return 0
-                          ret
-```
+Both files are magic-mounted over `/vendor/lib64/` — the real partition is never
+modified.
 
-Because dual-flash support reports `0`, the HAL only ever drives `ch1`.
+## Why the HAL swap is safe (ABI check)
 
-## The fix
+The DariaOS provider needs exactly **two** imported symbols beyond the stock
+Volla provider:
 
-This module ships a binary-patched copy of that library where those two
-functions return `1`:
+- `NSMetadataProviderManager::valueForByDeviceId(int)` — exported by the
+  device's own `libmtkcam_metastore.so`
+- `IMetadata::IEntry::itemAt(uint, Type2Type<int>)` — exported by the device's
+  own `libmtkcam_metadata.so`
 
-```
-cust_isDualFlashSupport:  mov w0, #1
-                          ret
-cust_isSubFlashSupport:   mov w0, #1
-                          ret
-```
-
-**Exactly 8 bytes** differ from stock. Everything else is byte-identical. The
-patched library is overlaid onto `/vendor/lib64/` via KernelSU magic mount, so
-the real partition is never modified. The camera HAL then drives **both** flash
-channels natively, for camera flash and the system torch alike.
-
-- Stock lib SHA-256: `b2b136403c048a764ad2c7858ae10342db45f561808bf7f4b5de4bb9793698c5`
-- Patched lib SHA-256: `afa81368cfedd89e8d8ba3f477855905699dc565a5ba6cac9b0b2ca1d55d60ac`
+Both are already present on the Volla ROM, and the `NEEDED` library list is
+otherwise identical, so the swap resolves cleanly with no extra files.
 
 ## Install
 
-1. Download the module ZIP from [Releases](../../releases) or
-   [Actions artifacts](../../actions).
-2. KernelSU app → *Modules* → *Install from storage* → pick the ZIP.
+1. KernelSU app → *Modules* → *Install from storage* → pick the ZIP.
+2. The installer verifies device = `algiz`, size-checks the flashlight patch,
+   and backs up both stock libraries to `/data/local/tmp/vollaflashdual_backup/`.
 3. Reboot.
 
-The installer verifies your device is `algiz` and that the stock library size
-matches the one the patch was built against; it **aborts** if they differ (a
-different ROM build would ship a different library and flashing it could break
-the camera). It also backs up your stock library to
-`/data/local/tmp/vollaflashdual_backup/` before doing anything.
+After reboot: both LEDs light for camera/torch, and long-pressing the flashlight
+tile should show a brightness slider.
 
-## Safety / recovery
+## Recovery
 
-- Uninstalling the module in KernelSU restores stock behaviour on reboot.
-- If the camera ever misbehaves and you can't reach the UI, disable via ADB:
-  ```
-  adb shell su -c 'touch /data/local/tmp/vollaflashdual_disable'
-  ```
-  then reboot — the module self-disables and stock is restored.
-- Your bootloader is unlocked, so worst case you can also just remove the module
-  from `/data/adb/modules/` in recovery/safe mode.
+The HAL swap is the higher-risk part (cross-ROM library). If the camera
+misbehaves:
 
-## Scope
+```
+adb shell su -c 'touch /data/local/tmp/vollaflashdual_disable'
+```
 
-- This module fixes the **dual-LED** behaviour only.
-- The **torch brightness slider** (HAL reports `torchStrengthMaxLevel = 1`) is a
-  separate item, handled by the companion project **VollaFlashFix**.
+then reboot — the module self-disables and stock libraries are restored. Or
+remove the module in KernelSU. Your bootloader is unlocked, so you can also
+delete it from `/data/adb/modules/` in safe mode.
 
-## Important
+## Caveats
 
-This library is specific to one ROM build (fingerprint
-`volla/algiz/...:16/BP4A.251205.006/...`). After a system OTA that updates the
-camera HAL, **uninstall and rebuild** the patch against the new library, or the
-size check will (correctly) refuse to flash.
+- Built against a specific Volla ROM
+  (`volla/algiz/...:16/BP4A.251205.006/...`) and a specific DariaOS build. After
+  a system OTA that updates the camera HAL, rebuild against the new libraries.
+- If the torch strength metadata isn't present on your build, the HAL falls back
+  to default behaviour (logs `STRENGTH_DEFAULT_LEVEL not found`) — the slider may
+  not appear, but the camera keeps working.
+
+## Credits
+
+Dual-LED patch + HAL analysis: reverse-engineered from
+`libcameracustom.flashlight.so`. Torch-strength HAL sourced from the DariaOS
+(zahedan) vendor image for the same SoC.

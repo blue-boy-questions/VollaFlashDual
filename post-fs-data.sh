@@ -1,10 +1,8 @@
 #!/system/bin/sh
-# Post-fs-data safety: if the camera HAL crashes on boot with the patched lib,
-# the user can create /data/local/tmp/vollaflashdual_disable to force-restore
-# the stock library on next boot without needing the KernelSU UI.
-BK=/data/local/tmp/vollaflashdual_backup/libcameracustom.flashlight.so.orig
+# Emergency self-disable: if the swapped camera HAL misbehaves, the user can
+# create the flag file over ADB and reboot; the module removes its overlay so
+# stock vendor libraries are used again.
 FLAG=/data/local/tmp/vollaflashdual_disable
-if [ -f "$FLAG" ] && [ -f "$BK" ]; then
-    # Remove our overlay by disabling the module directory.
+if [ -f "$FLAG" ]; then
     touch "${0%/*}/disable"
 fi
