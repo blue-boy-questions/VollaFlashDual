@@ -1,6 +1,6 @@
 id=vollaflashdual
-name=Volla Quintus Dual-Flash + Torch Strength
-version=v4.0
-versionCode=5
+name=Volla Quintus Dual-Flash
+version=v2.0
+versionCode=2
 author=blue-boy-questions
-description=Native dual-LED flash (8-byte HAL patch) + torch brightness slider by restoring the DariaOS strength implementation into the AIDL camera-device layer (the current ROM ships it stubbed to ENOSYS). Magic-mount overlay, no Xposed, auto-recovery. Volla Quintus / zahedan (algiz, mt6877) only.
+description=Binary-patches the MediaTek camera HAL (libcameracustom.flashlight.so) so cust_isDualFlashSupport returns true, making BOTH flash LEDs light natively on the Volla Quintus (algiz). Magic-mount overlay, no Xposed, no daemon. Fully reversible.
